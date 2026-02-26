@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const { Pool } = require("pg");
 require('dotenv').config();
+const cookieParser = require('cookie-parser');
 
 const app = express();
 
@@ -13,6 +14,7 @@ app.use(cors({
 }));
 
 app.use(express.json());
+app.use(cookieParser());
 
 const PORT = process.env.PORT
 
@@ -116,7 +118,7 @@ app.get("/articles/:id", async (req, res) => {
   }
 });
 
-app.post("/articles", async (req, res) => {
+app.post("/articles", userAuth, async (req, res) => {
   try {
     const { title, category, content, tags } = req.body;
     if (title && category && content) {
@@ -134,9 +136,15 @@ app.post("/articles", async (req, res) => {
   }
 });
 
-app.put("/articles/:id", async (req, res) => {
+app.put("/articles/:id", userAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
+    const authorId = await pool.query('SELECT author_id FROM articles WHERE id = $1', [id]);
+
+    if (authorId !== req.user.id) {
+      res.status(403).json({message: '권한 없음.'});
+    }
+
     const { title, category, content, tags } = req.body;
 
     const result = await pool.query(
@@ -155,7 +163,7 @@ app.put("/articles/:id", async (req, res) => {
   }
 });
 
-app.delete("/articles/:id", async (req, res) => {
+app.delete("/articles/:id", userAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
     const result = await pool.query(
@@ -185,3 +193,150 @@ app.get("/categories", async (req, res) => {
     res.status(500).json({ message: "서버 오류" });
   }
 });
+
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const cookieParser = require("cookie-parser");
+
+function tokenGenerator(user) {
+  const accessToken = jwt.sign({id: user.id}, process.env.ACCESS_SECRET, {expiresIn: '15m'});
+  const refreshToken = jwt.sign({id: user.id}, process.env.REFRESH_SECRET, {expiresIn: '7d'})
+
+  return { accessToken, refreshToken };
+};
+
+function userAuth(req, res, next) {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader) {
+    return res.status(401).json({message: 'Authorization 헤더가 없습니다'});
+  }
+
+  const parts = authHeader.split(' ');
+  const scheme = parts[0];
+  const token = parts[1];
+
+  if (scheme !== 'Bearer' || !token) {
+    return res.status(401).json({message: 'Authorization 형식 오류'});
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.ACCESS_SECRET);
+    req.user = {id: decoded.id};
+    next();
+  }
+  catch (error) {
+    return res.status(401).json({message: '유효하지 않거나 만료된 토큰'});
+  }
+};
+
+app.post('/register', async (req, res) => {
+  try {
+    const { email, pw } = req.body;
+
+    if (!email || !pw) {
+      return res.status(400).json({message: 'email 또는 비밀번호가 입력되지 않았습니다.'})
+    }
+
+    const searchEmail = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    if (searchEmail.length > 0) {
+      res.status(409).json({message: '이미 존재하는 email입니다.'})
+    }
+
+    const hashedPw = await bcrypt.hash(pw, 10);
+    const { rows : newUser } = await pool.query('INSERT INTO users (email, pw) VALUES ($1, $2) RETURNING id, email', [email, hashedPw]);
+
+    const { accessToken, refreshToken } = tokenGenerator(newUser[0]);
+
+    await pool.query('UPDATE users SET refreshToken = $1 WHERE id = $2', [refreshToken, newUser[0].id]);
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000
+    })
+
+    res.status(201).json({accessToken});
+  }
+
+  catch (error) {
+    console.error(error);
+    res.status(500).json({message: '서버 에러'});
+  } 
+})
+
+app.post('/login', async (req, res) => {
+  const { email, pw } = req.body;
+  
+  const { rows : userList } = await pool.query('SELECT * FROM users');
+  
+  const user = userList.find((user) => email === user.email);
+  if (!user) {
+    res.status(401).json({message: '이메일 혹은 id가 잘못되었습니다.'});
+  }
+  
+  const isMatch = await bcrypt.compare(pw, user.pw);
+  if (!isMatch) {
+    res.status(401).json({message: '이메일 혹은 id가 잘못되었습니다.'});
+  }
+
+  const { accessToken, refreshToken }= tokenGenerator(user)
+  await pool.query('UPDATE users SET refreshToken = $1 WHERE id = $2',[refreshToken, user.id]);
+
+  res.cookie('refreshToken', refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: "strict",
+    maxAge: 7 * 24 * 60 * 60 * 1000
+  });
+
+  res.json({accessToken});
+  
+});
+
+// Access 토큰 재발급
+app.post ('/token/refresh', async (req, res) => {
+  const refreshToken = req.cookies.refreshToken;
+  if (!refreshToken) {
+    return res.status(401).json({message: '토큰 없음'})
+  }
+
+  const stored = await pool.query('SELECT * FROM users WHERE refreshToken = $1', [refreshToken]);
+
+  if (stored.rows.length) {
+    return res.status(403).json({message: '유효하지 않은 토큰'})
+  }
+
+  jwt.verify(refreshToken, process.env.REFRESH_SECRET, (err,user) => {
+    if (err) return res.status(403).json({message: '만료된 토큰'})    
+
+    const accessToken = jwt.sign({id: user.id}, process.env.ACCESS_SECRET, {expiresIn:'15m'});
+    res.json({accessToken}); });
+});
+
+app.post ('/logout', async (req, res) => {
+  const refreshToken = req.cookies.refreshToken;
+  const decoded = jwt.verify(refreshToken, process.env.REFRESH_SECRET);
+  await pool.query('UPDATE users SET refreshToken = $1 WHERE id = $2', ['', decoded.id])
+  res.clearCookie('refreshToken').json({message: "로그아웃 완료"});
+})
+
+app.get ('/me', userAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    const { rows } = await pool.query('SELECT id, email FROM users WHERE id = $1', [userId]);
+    if (rows.length === 0) {
+      return res.status(404).json({message: '사용자를 찾을 수 없습니다.'});
+    }
+
+    return res.json({user: rows[0]});
+  
+  }
+  catch(error) {
+    console.error(error);
+    res.status(500).json({message: '서버 에러'});
+  }
+    
+
+})
