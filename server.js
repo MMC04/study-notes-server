@@ -123,8 +123,8 @@ app.post("/articles", userAuth, async (req, res) => {
     const { title, category, content, tags } = req.body;
     if (title && category && content) {
       const { rows: newArticle } = await pool.query(
-        "INSERT INTO articles (title, category, tags, content) VALUES ($1, $2, $3, $4) RETURNING *",
-        [title, category, tags, content],
+        "INSERT INTO articles (title, category, tags, content, author_id) VALUES ($1, $2, $3, $4, $5) RETURNING *",
+        [title, category, tags, content, req.user.id],
       );
       res.json({ message: "글이 추가됐습니다.", article: newArticle[0] });
     } else {
@@ -139,10 +139,11 @@ app.post("/articles", userAuth, async (req, res) => {
 app.put("/articles/:id", userAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const authorId = await pool.query('SELECT author_id FROM articles WHERE id = $1', [id]);
+    const { rows: authorId } = await pool.query('SELECT author_id FROM articles WHERE id = $1', [id]);
 
-    if (authorId !== req.user.id) {
+    if (authorId[0].author_id !== req.user.id) {
       res.status(403).json({message: '권한 없음.'});
+      return;
     }
 
     const { title, category, content, tags } = req.body;
@@ -166,6 +167,13 @@ app.put("/articles/:id", userAuth, async (req, res) => {
 app.delete("/articles/:id", userAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
+    const userId = req.user.id;
+    const { rows: authorId } = await pool.query('SELECT author_id FROM articles WHERE id = $1', [id]);
+
+    if (authorId[0].author_id !== userId) {
+      return res.json({message: '권한 없음'});
+    }
+  
     const result = await pool.query(
       "DELETE FROM articles WHERE id = $1 RETURNING *",
       [id],
@@ -196,7 +204,6 @@ app.get("/categories", async (req, res) => {
 
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const cookieParser = require("cookie-parser");
 
 function tokenGenerator(user) {
   const accessToken = jwt.sign({id: user.id}, process.env.ACCESS_SECRET, {expiresIn: '15m'});
@@ -239,7 +246,7 @@ app.post('/register', async (req, res) => {
     }
 
     const searchEmail = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
-    if (searchEmail.length > 0) {
+    if (searchEmail.rows.length > 0) {
       res.status(409).json({message: '이미 존재하는 email입니다.'})
     }
 
@@ -252,7 +259,7 @@ app.post('/register', async (req, res) => {
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: 'none',
       maxAge: 7 * 24 * 60 * 60 * 1000
     })
 
@@ -268,16 +275,18 @@ app.post('/register', async (req, res) => {
 app.post('/login', async (req, res) => {
   const { email, pw } = req.body;
   
-  const { rows : userList } = await pool.query('SELECT * FROM users');
+  const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
   
-  const user = userList.find((user) => email === user.email);
+  const user = rows[0];
   if (!user) {
     res.status(401).json({message: '이메일 혹은 id가 잘못되었습니다.'});
+    return;
   }
   
   const isMatch = await bcrypt.compare(pw, user.pw);
   if (!isMatch) {
     res.status(401).json({message: '이메일 혹은 id가 잘못되었습니다.'});
+    return;
   }
 
   const { accessToken, refreshToken }= tokenGenerator(user)
@@ -303,7 +312,7 @@ app.post ('/token/refresh', async (req, res) => {
 
   const stored = await pool.query('SELECT * FROM users WHERE refreshToken = $1', [refreshToken]);
 
-  if (stored.rows.length) {
+  if (!stored.rows.length) {
     return res.status(403).json({message: '유효하지 않은 토큰'})
   }
 
@@ -315,10 +324,16 @@ app.post ('/token/refresh', async (req, res) => {
 });
 
 app.post ('/logout', async (req, res) => {
-  const refreshToken = req.cookies.refreshToken;
-  const decoded = jwt.verify(refreshToken, process.env.REFRESH_SECRET);
-  await pool.query('UPDATE users SET refreshToken = $1 WHERE id = $2', ['', decoded.id])
-  res.clearCookie('refreshToken').json({message: "로그아웃 완료"});
+  try {
+    const refreshToken = req.cookies.refreshToken;
+    const decoded = jwt.verify(refreshToken, process.env.REFRESH_SECRET);
+    await pool.query('UPDATE users SET refreshToken = $1 WHERE id = $2', ['', decoded.id])
+    res.clearCookie('refreshToken').json({message: "로그아웃 완료"});
+  }
+  catch (error) {
+    console.error(error);
+    res.status(500).json({message: "서버 에러"});
+  }
 })
 
 app.get ('/me', userAuth, async (req, res) => {
