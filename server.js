@@ -16,7 +16,7 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
-const PORT = process.env.PORT
+const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, () => {
   console.log(`서버 실행중: ${PORT}`);
