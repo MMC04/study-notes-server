@@ -1,3 +1,8 @@
+// server.js 맨 위에 추가
+process.on('uncaughtException', (err) => {
+    console.error('uncaughtException:', err);
+});
+
 const express = require("express");
 const cors = require("cors");
 const { Pool } = require("pg");
