@@ -1,4 +1,5 @@
 // DB 연결을 위한 Pool 설정
+require('./env');
 const { Pool } = require('pg'); 
 
 const pool = new Pool({

@@ -4,7 +4,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node src/server.js",
+    "test": "jest",
+    "test:db:up": "docker compose -f docker-compose.test.yml up -d",
+    "test:db:down": "docker compose -f docker-compose.test.yml down",
+    "test:db:seed": "docker exec -i study-notes-test-db psql -U testuser -d study_notes_test < tests/schema.sql"
   },
   "keywords": [],
   "author": "",
@@ -18,5 +22,10 @@
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.18.0",
     "react-router-dom": "^7.13.0"
+  },
+  "devDependencies": {
+    "cross-env": "^10.1.0",
+    "jest": "^30.4.2",
+    "supertest": "^7.2.2"
   }
 }
