@@ -79,7 +79,7 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// Access 토큰 갱신
+// Access, refresh 토큰 갱신
 router.post('/token/refresh', async (req, res) => { 
   const refreshToken = req.cookies.refreshToken;
   if (!refreshToken) {
@@ -89,10 +89,25 @@ router.post('/token/refresh', async (req, res) => {
   if (!stored.rows.length) {
     return res.status(403).json({message: '유효하지 않은 토큰'})
   }
+  const user = stored.rows[0];
+
   try {
-    const decoded = jwt.verify(refreshToken, process.env.REFRESH_SECRET);
-    const accessToken = jwt.sign({id: decoded.id}, process.env.ACCESS_SECRET, {expiresIn:'15m'});
-    res.json({accessToken}); 
+    jwt.verify(refreshToken, process.env.REFRESH_SECRET);
+
+    // refresh token rotation — 새 토큰 쌍을 발급
+    const { accessToken, refreshToken: newRefreshToken } = tokenGenerator(user);
+
+    // 기존 것을 새 것으로 즉시 교체 (이전 값은 더 이상 DB에 없으므로 자동 무효화됨)
+    await pool.query('UPDATE users SET refresh_token = $1 WHERE id = $2', [newRefreshToken, user.id]);
+
+    res.cookie('refreshToken', newRefreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'none',
+      maxAge: 7 * 24 * 60 * 60 * 1000
+    });
+
+    res.json({ accessToken });
   }
   catch (error) {
     return res.status(403).json({message: '만료된 토큰'});
