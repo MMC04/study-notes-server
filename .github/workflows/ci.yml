@@ -1,0 +1,52 @@
+# .github/workflows/ci.yml
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: study_notes_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: 저장소 코드 가져오기
+        uses: actions/checkout@v4
+
+      - name: Node.js 설치
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 의존성 설치
+        run: npm ci
+
+      - name: 테스트 DB 스키마 적용
+        run: |
+          PGPASSWORD=testpass psql -h localhost -p 5433 -U testuser -d study_notes_test -f tests/schema.sql
+
+      - name: 테스트 실행
+        run: npm test
+        env:
+          NODE_ENV: test
+          DATABASE_URL: postgresql://testuser:testpass@localhost:5433/study_notes_test
+          ACCESS_SECRET: sdkasdlkasdlkj
+          REFRESH_SECRET: zxcmnbzxcmnbas
