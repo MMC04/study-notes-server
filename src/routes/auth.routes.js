@@ -27,7 +27,7 @@ router.post('/register', async (req, res) => {
     // 회원가입 완료시 자동로그인
     const { accessToken, refreshToken } = tokenGenerator(newUser[0]);
 
-    await pool.query('UPDATE users SET refreshToken = $1 WHERE id = $2', [refreshToken, newUser[0].id]);
+    await pool.query('UPDATE users SET refresh_token = $1 WHERE id = $2', [refreshToken, newUser[0].id]);
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
@@ -62,7 +62,7 @@ router.post('/login', async (req, res) => {
   }
 
   const { accessToken, refreshToken }= tokenGenerator(user)
-  await pool.query('UPDATE users SET refreshToken = $1 WHERE id = $2',[refreshToken, user.id]);
+  await pool.query('UPDATE users SET refresh_token = $1 WHERE id = $2',[refreshToken, user.id]);
 
   res.cookie('refreshToken', refreshToken, {
     httpOnly: true,
@@ -85,7 +85,7 @@ router.post('/token/refresh', async (req, res) => {
   if (!refreshToken) {
     return res.status(401).json({message: '토큰 없음'})
   }
-  const stored = await pool.query('SELECT * FROM users WHERE refreshToken = $1', [refreshToken]);
+  const stored = await pool.query('SELECT * FROM users WHERE refresh_token = $1', [refreshToken]);
   if (!stored.rows.length) {
     return res.status(403).json({message: '유효하지 않은 토큰'})
   }
@@ -106,7 +106,7 @@ router.post('/logout', async (req, res) => {
     if (!refreshToken) return res.status(401).json({message : "토큰이 없습니다."});
 
     const decoded = jwt.verify(refreshToken, process.env.REFRESH_SECRET);
-    await pool.query('UPDATE users SET refreshToken = $1 WHERE id = $2', [null, decoded.id])
+    await pool.query('UPDATE users SET refresh_token = $1 WHERE id = $2', [null, decoded.id])
     res.clearCookie('refreshToken').json({message: "로그아웃 완료"});
   }
   catch (error) {
