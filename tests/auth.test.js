@@ -80,3 +80,45 @@ describe('POST /auth/logout', () => {
     expect(rows[0].refresh_token).toBeNull();
   });
 });
+
+// token refresh 테스트
+describe('POST /auth/token/refresh', () => {
+  test('유효한 refreshToken이면 새 accessToken과 새 refreshToken을 발급한다', async () => {
+    const registerResponse = await request(app)
+      .post('/auth/register')
+      .send({ email: 'refresh@test.com', pw: '1234' });
+
+    const originalCookies = registerResponse.headers['set-cookie'];
+    const originalRefreshToken = originalCookies[0].split(';')[0].split('=')[1];
+
+    const refreshResponse = await request(app)
+      .post('/auth/token/refresh')
+      .set('Cookie', originalCookies);
+
+    expect(refreshResponse.status).toBe(200);
+    expect(refreshResponse.body.accessToken).toBeDefined();
+
+    const newCookies = refreshResponse.headers['set-cookie'];
+    const newRefreshToken = newCookies[0].split(';')[0].split('=')[1];
+
+    expect(newRefreshToken).not.toBe(originalRefreshToken);  // 값이 바뀌었는지 확인
+  });
+
+  test('이미 사용된(rotation된) refreshToken을 재사용하면 403을 반환한다', async () => {
+    const registerResponse = await request(app)
+      .post('/auth/register')
+      .send({ email: 'reuse@test.com', pw: '1234' });
+
+    const originalCookies = registerResponse.headers['set-cookie'];
+
+    // 첫 번째 재발급 — 성공해야 함
+    await request(app).post('/auth/token/refresh').set('Cookie', originalCookies);
+
+    // 같은(이제는 폐기된) refreshToken으로 다시 시도 — 거부되어야 함
+    const reuseResponse = await request(app)
+      .post('/auth/token/refresh')
+      .set('Cookie', originalCookies);
+
+    expect(reuseResponse.status).toBe(403);
+  });
+});
