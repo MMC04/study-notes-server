@@ -101,7 +101,7 @@ router.post('/register', async (req, res) => {
  *           Set-Cookie:
  *             schema:
  *               type: string
- *           description: refreshToken이 httpOnly 쿠키로 설정됨 
+ *             description: refreshToken이 httpOnly 쿠키로 설정됨 
  *       401:
  *         description: 틀린 입력값
  *       500:
