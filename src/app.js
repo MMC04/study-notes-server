@@ -11,7 +11,15 @@ const { notFoundHandler, errorHandler } = require('./middlewares/error.middlewar
 
 const app = express();
 
-app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
+const allowedOrigins = process.env.NODE_ENV === 'production'
+  ? process.env.FRONTEND_URL
+  : true;   // 개발 환경에서는 모든 origin 허용
+
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true
+}));
+
 app.use(express.json());
 app.use(cookieParser());
 

@@ -31,6 +31,8 @@ const userAuth = require('../middlewares/auth.middleware');
 *     responses:
 *       200:
 *         description: 조회 성공
+*       500:
+*         description: 서버 오류
 */
 router.get('/', async (req, res) => {
   try {
