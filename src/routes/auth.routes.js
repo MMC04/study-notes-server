@@ -32,7 +32,7 @@ const { tokenGenerator } = require('../utils/token');
  *           Set-Cookie:
  *             schema:
  *               type: string
- *           description: refreshToken이 httpOnly 쿠키로 설정됨  
+ *             description: refreshToken이 httpOnly 쿠키로 설정됨  
  *       400:
  *         description: 입력값이 유효하지 않음
  *       409:
@@ -146,15 +146,11 @@ router.post('/login', async (req, res) => {
  * /auth/token/refresh:
  *   post:
  *     summary: Access/Refresh 토큰 재발급
- *     description: 요청 쿠키의 refreshToken을 이용해 인증합니다.
+ *     description: 
+ *       요청 쿠키의 refreshToken을 이용해 인증합니다.
+ *       브라우저에서 로그인/회원가입 후 자동으로 쿠키가 저장되므로,
+ *       별도 값을 입력하지 않아도 로그인 상태라면 정상 동작합니다. 
  *     tags: [Auth]
- *     parameters: 
- *       - in: cookie
- *         name: refreshToken
- *         required: true
- *         schema:
- *           type: string
- *         description: httpOnly 쿠키로 전달되는 refreshToken
  *     responses:
  *       200:
  *         description: 재발급 성공
@@ -204,15 +200,11 @@ router.post('/token/refresh', async (req, res) => {
  * /auth/logout:
  *   post:
  *     summary: 로그아웃
- *     description: DB에 저장된 refreshToken을 삭제, 쿠키에 저장된 refreshToken을 비움
+ *     description: 
+ *       DB에 저장된 refreshToken을 삭제, 쿠키에 저장된 refreshToken을 비움
+ *       브라우저에서 로그인/회원가입 후 자동으로 쿠키가 저장되므로,
+ *       별도 값을 입력하지 않아도 로그인 상태라면 정상 동작합니다.
  *     tags: [Auth]
- *     parameters: 
- *       - in: cookie
- *         name: refreshToken
- *         required: true
- *         schema:
- *           type: string
- *         description: httpOnly 쿠키로 전달되는 refreshToken
  *     responses:
  *       200:
  *         description: 로그아웃 성공
