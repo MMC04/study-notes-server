@@ -6,8 +6,41 @@ const jwt = require('jsonwebtoken');
 const pool = require('../config/database');
 const userAuth = require('../middlewares/auth.middleware');
 const { tokenGenerator } = require('../utils/token');
+const { getRefreshCookieOptions } = require('../utils/cookieOptions');
 
-// 회원 등록
+/**
+ * @swagger
+ * /auth/register:
+ *   post:
+ *     summary: 회원 등록
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content: 
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, pw]
+ *             properties:
+ *               email:
+ *                 type: string
+ *               pw:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: 회원 등록 성공
+ *         headers:
+ *           Set-Cookie:
+ *             schema:
+ *               type: string
+ *             description: refreshToken이 httpOnly 쿠키로 설정됨  
+ *       400:
+ *         description: 입력값이 유효하지 않음
+ *       409:
+ *         description: 이미 존재하는 이메일
+ *       500:
+ *         description: 서버 오류
+ */
 router.post('/register', async (req, res) => { 
   try {
     const { email, pw } = req.body;
@@ -28,12 +61,7 @@ router.post('/register', async (req, res) => {
     const { accessToken, refreshToken } = tokenGenerator(newUser[0]);
 
     await pool.query('UPDATE users SET refresh_token = $1 WHERE id = $2', [refreshToken, newUser[0].id]);
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'none',
-      maxAge: 7 * 24 * 60 * 60 * 1000
-    })
+    res.cookie('refreshToken', refreshToken, getRefreshCookieOptions());
 
     res.status(201).json({accessToken});
   }
@@ -44,7 +72,37 @@ router.post('/register', async (req, res) => {
   } 
 });
 
-// 로그인
+/**
+ * @swagger
+ * /auth/login:
+ *   post:
+ *     summary: 로그인
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content: 
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, pw]
+ *             properties:
+ *               email:
+ *                 type: string
+ *               pw:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: 로그인 성공
+ *         headers:
+ *           Set-Cookie:
+ *             schema:
+ *               type: string
+ *             description: refreshToken이 httpOnly 쿠키로 설정됨 
+ *       401:
+ *         description: 틀린 입력값
+ *       500:
+ *         description: 서버 오류
+ */
 router.post('/login', async (req, res) => { 
   try {
   const { email, pw } = req.body;
@@ -64,12 +122,7 @@ router.post('/login', async (req, res) => {
   const { accessToken, refreshToken }= tokenGenerator(user)
   await pool.query('UPDATE users SET refresh_token = $1 WHERE id = $2',[refreshToken, user.id]);
 
-  res.cookie('refreshToken', refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: "none",
-    maxAge: 7 * 24 * 60 * 60 * 1000
-  });
+  res.cookie('refreshToken', refreshToken, getRefreshCookieOptions());
 
   res.json({accessToken});
   }
@@ -79,7 +132,26 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// Access, refresh 토큰 갱신
+/**
+ * @swagger
+ * /auth/token/refresh:
+ *   post:
+ *     summary: Access/Refresh 토큰 재발급
+ *     description: 
+ *       요청 쿠키의 refreshToken을 이용해 인증합니다.
+ *       브라우저에서 로그인/회원가입 후 자동으로 쿠키가 저장되므로,
+ *       별도 값을 입력하지 않아도 로그인 상태라면 정상 동작합니다. 
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: 재발급 성공
+ *       401:
+ *         description: 쿠키에 refreshToken이 없음
+ *       403:
+ *         description: 유효하지 않거나 만료된 토큰
+ *       500:
+ *         description: 서버 오류 
+ */
 router.post('/token/refresh', async (req, res) => { 
   const refreshToken = req.cookies.refreshToken;
   if (!refreshToken) {
@@ -100,13 +172,8 @@ router.post('/token/refresh', async (req, res) => {
     // 기존 것을 새 것으로 즉시 교체 (이전 값은 더 이상 DB에 없으므로 자동 무효화됨)
     await pool.query('UPDATE users SET refresh_token = $1 WHERE id = $2', [newRefreshToken, user.id]);
 
-    res.cookie('refreshToken', newRefreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'none',
-      maxAge: 7 * 24 * 60 * 60 * 1000
-    });
-
+    res.cookie('refreshToken', newRefreshToken, getRefreshCookieOptions());
+    
     res.json({ accessToken });
   }
   catch (error) {
@@ -114,7 +181,24 @@ router.post('/token/refresh', async (req, res) => {
   }
 });
 
-// 로그아웃
+/**
+ * @swagger
+ * /auth/logout:
+ *   post:
+ *     summary: 로그아웃
+ *     description: 
+ *       DB에 저장된 refreshToken을 삭제, 쿠키에 저장된 refreshToken을 비움
+ *       브라우저에서 로그인/회원가입 후 자동으로 쿠키가 저장되므로,
+ *       별도 값을 입력하지 않아도 로그인 상태라면 정상 동작합니다.
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: 로그아웃 성공
+ *       401:
+ *         description: 쿠키에 refreshToken이 없음
+ *       500:
+ *         description: 서버 오류
+ */
 router.post('/logout', async (req, res) => { 
   try {
     const refreshToken = req.cookies.refreshToken;
@@ -130,7 +214,22 @@ router.post('/logout', async (req, res) => {
   }
  });
 
-
+/**
+ * @swagger
+ * /auth/me:
+ *   get:
+ *     summary: 본인 정보 조회
+ *     tags: [Auth]
+ *     security: 
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: 본인 정보 조회 성공
+ *       404:
+ *         description: 사용자를 찾을 수 없음
+ *       500:
+ *         description: 서버 오류
+ */
 router.get('/me', userAuth, async (req, res) => { 
   try {
     const userId = req.user.id;
