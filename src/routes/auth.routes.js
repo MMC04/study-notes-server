@@ -6,6 +6,7 @@ const jwt = require('jsonwebtoken');
 const pool = require('../config/database');
 const userAuth = require('../middlewares/auth.middleware');
 const { tokenGenerator } = require('../utils/token');
+const { getRefreshCookieOptions } = require('../utils/cookieOptions');
 
 /**
  * @swagger
@@ -60,12 +61,7 @@ router.post('/register', async (req, res) => {
     const { accessToken, refreshToken } = tokenGenerator(newUser[0]);
 
     await pool.query('UPDATE users SET refresh_token = $1 WHERE id = $2', [refreshToken, newUser[0].id]);
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'none',
-      maxAge: 7 * 24 * 60 * 60 * 1000
-    })
+    res.cookie('refreshToken', refreshToken, getRefreshCookieOptions());
 
     res.status(201).json({accessToken});
   }
@@ -126,12 +122,7 @@ router.post('/login', async (req, res) => {
   const { accessToken, refreshToken }= tokenGenerator(user)
   await pool.query('UPDATE users SET refresh_token = $1 WHERE id = $2',[refreshToken, user.id]);
 
-  res.cookie('refreshToken', refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: "none",
-    maxAge: 7 * 24 * 60 * 60 * 1000
-  });
+  res.cookie('refreshToken', refreshToken, getRefreshCookieOptions());
 
   res.json({accessToken});
   }
@@ -181,12 +172,7 @@ router.post('/token/refresh', async (req, res) => {
     // 기존 것을 새 것으로 즉시 교체 (이전 값은 더 이상 DB에 없으므로 자동 무효화됨)
     await pool.query('UPDATE users SET refresh_token = $1 WHERE id = $2', [newRefreshToken, user.id]);
 
-    res.cookie('refreshToken', newRefreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'none',
-      maxAge: 7 * 24 * 60 * 60 * 1000
-    });
+    res.cookie('refreshToken', refreshToken, getRefreshCookieOptions());
 
     res.json({ accessToken });
   }
