@@ -172,8 +172,8 @@ router.post('/token/refresh', async (req, res) => {
     // 기존 것을 새 것으로 즉시 교체 (이전 값은 더 이상 DB에 없으므로 자동 무효화됨)
     await pool.query('UPDATE users SET refresh_token = $1 WHERE id = $2', [newRefreshToken, user.id]);
 
-    res.cookie('refreshToken', refreshToken, getRefreshCookieOptions());
-
+    res.cookie('refreshToken', newRefreshToken, getRefreshCookieOptions());
+    
     res.json({ accessToken });
   }
   catch (error) {
