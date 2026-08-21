@@ -5,6 +5,35 @@ const pool = require('../config/database');
 const userAuth = require('../middlewares/auth.middleware');
 
 // 글 가져오기 (카테고리별 글 조회, 전체 글 조회, 페이지별로 글 5개씩 로드 (페이지네이션))
+/**
+* @swagger
+* /articles:
+*   get:
+*     summary: 게시글 목록 조회
+*     tags: [Articles]
+*     parameters:
+*       - in: query
+*         name: category
+*         schema:
+*           type: string
+*         description: 카테고리 필터
+*       - in: query
+*         name: page
+*         schema:
+*           type: integer
+*         description: 페이지 번호
+*       - in: query
+*         name: sort
+*         schema:
+*           type: string
+*           enum: [asc, desc]
+*         description: 정렬 방향
+*     responses:
+*       200:
+*         description: 조회 성공
+*       500:
+*         description: 서버 오류
+*/
 router.get('/', async (req, res) => {
   try {
     const category = req.query.category;
@@ -55,7 +84,27 @@ router.get('/', async (req, res) => {
   }
 });
 
-// 키워드 검색
+/**
+ * @swagger
+ * /articles/search:
+ *   get:
+ *     summary: 게시글 검색
+ *     tags: [Articles]
+ *     parameters:
+ *       - in: query
+ *         name: keyword
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: 검색 키워드
+ *     responses:
+ *       200:
+ *         description: 검색 성공
+ *       400:
+ *         description: 검색어 없음
+ *       500:
+ *         description: 서버 오류
+ */
 router.get('/search', async (req, res) => {
   try {
     const keyword = req.query.keyword; // 쿼리스트링 키워드 추출
@@ -74,7 +123,29 @@ router.get('/search', async (req, res) => {
   }
 });
 
-// 특정 글 조회
+/**
+ * @swagger
+ * /articles/{id}:
+ *   get:
+ *     summary: 특정 글 조회
+ *     tags: [Articles]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: 게시글 ID
+ *     responses:
+ *       200:
+ *         description: 검색 성공
+ *       400:
+ *         description: 잘못된 게시글 ID 형식
+ *       404:
+ *         description: 존재하지 않는 게시글 ID
+ *       500:
+ *         description: 서버 오류
+ */
 router.get('/:id', async (req, res) => { 
   try {
     const id = Number(req.params.id);
@@ -94,11 +165,46 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// 글 작성
+/**
+ * @swagger
+ * /articles:
+ *   post:
+ *     summary: 글 쓰기
+ *     tags: [Articles]
+ *     security: 
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content: 
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [title, category, content]
+ *             properties:
+ *               title:
+ *                 type: string
+ *               category:
+ *                 type: string
+ *               content:
+ *                 type: string
+ *               tags:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       201:
+ *         description: 글 작성 성공
+ *       400:
+ *         description: 입력값이 유효하지 않음
+ *       401:
+ *         description: 인증 실패
+ *       500:
+ *         description: 서버 오류
+ */
 router.post('/', userAuth, async (req, res) => { 
     try {
         const { title, category, content, tags } = req.body;
-        if (!title || !category || content) return res.status(400).json({ message: "입력값이 잘못되었습니다" });
+        if (!title || !category || !content) return res.status(400).json({ message: "입력값이 잘못되었습니다" });
         const { rows: newArticle } = await pool.query(
             "INSERT INTO articles (title, category, tags, content, author_id) VALUES ($1, $2, $3, $4, $5) RETURNING *",
             [title, category, tags, content, req.user.id],
@@ -111,7 +217,44 @@ router.post('/', userAuth, async (req, res) => {
     }
 });
 
-// 글 수정
+/**
+ * @swagger
+ * /articles/{id}:
+ *   put:
+ *     summary: 게시글 수정
+ *     tags: [Articles]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: 게시글 ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *               category:
+ *                 type: string
+ *               content:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: 수정 성공
+ *       403:
+ *         description: 권한 없음
+ *       404:
+ *         description: 존재하지 않는 게시글
+ *       500:
+ *         description: 서버 오류
+ */
 router.put('/:id', userAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -140,7 +283,30 @@ router.put('/:id', userAuth, async (req, res) => {
   }
 });
 
-// 글 삭제
+/**
+ * @swagger
+ * /articles/{id}:
+ *   delete:
+ *     summary: 게시글 삭제
+ *     tags: [Articles]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: 삭제 성공
+ *       403:
+ *         description: 권한 없음
+ *       404:
+ *         description: 존재하지 않는 게시글
+ *       500:
+ *         description: 서버 오류
+ */
 router.delete('/:id', userAuth, async (req, res) => {
   try {
     const id = Number(req.params.id);
