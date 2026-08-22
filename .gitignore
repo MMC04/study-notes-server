@@ -1,6 +1,7 @@
 node_modules/*
 .env
 .env.test
+.env.docker
 
 *.log
 npm-debug.log*

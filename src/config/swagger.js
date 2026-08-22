@@ -10,7 +10,7 @@ const options = {
       description: '정리노트 웹앱 백엔드 API 문서',
     },
     servers: [
-      { url: 'http://localhost:3000', description: '로컬 개발 서버' },
+      { url: 'http://localhost:8080', description: '로컬 개발 서버' },
     ],
     components: {
       securitySchemes: {
